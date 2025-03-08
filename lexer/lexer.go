@@ -37,7 +37,7 @@ func (l *Lexer) Next() token.Token {
 			l.next()
 			return token.Token{Type: token.NotEQ, Literal: string(ch) + string(l.ch)}
 		}
-		return token.Token{Type: token.ExclamationMark, Literal: string(l.ch)}
+		return token.Token{Type: token.Bang, Literal: string(l.ch)}
 	case '+':
 		return token.Token{Type: token.Plus, Literal: string(l.ch)}
 	case '-':
@@ -56,6 +56,12 @@ func (l *Lexer) Next() token.Token {
 		return token.Token{Type: token.LParan, Literal: string(l.ch)}
 	case ')':
 		return token.Token{Type: token.RParan, Literal: string(l.ch)}
+	case '{':
+		return token.Token{Type: token.LBrace, Literal: string(l.ch)}
+	case '}':
+		return token.Token{Type: token.RBrace, Literal: string(l.ch)}
+	case ',':
+		return token.Token{Type: token.Comma, Literal: string(l.ch)}
 	case 0:
 		return token.Token{Type: token.EOF, Literal: "EOF"}
 	}

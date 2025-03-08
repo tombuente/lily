@@ -1,6 +1,7 @@
 package ast
 
 import (
+	"bytes"
 	"encoding/json"
 	"reflect"
 )
@@ -29,22 +30,41 @@ type BoolExpr struct {
 	Value bool `json:"value"`
 }
 
-type PrefixExpr struct {
-	Op    string `json:"operator"`
-	Value Expr   `json:"value"`
+type UnaryExpr struct {
+	Op   string `json:"operator"`
+	Expr Expr   `json:"value"`
 }
 
-type InfixExpr struct {
+type BinaryExpr struct {
 	Op    string `json:"operator"`
 	Left  Expr   `json:"left"`
 	Right Expr   `json:"right"`
 }
 
+type IfExpr struct {
+	Condition   Expr
+	Consequence *BlockStmt
+	Alternative *BlockStmt
+}
+
+type FnExpr struct {
+	Params []*IdentExpr `json:"params"`
+	Body   *BlockStmt   `json:"body"`
+}
+
+type CallExpr struct {
+	Fn   Expr // [IdentExpr] or [FnExpr]
+	Args []Expr
+}
+
 func (x *IdentExpr) expr()  {}
 func (x *IntExpr) expr()    {}
 func (x *BoolExpr) expr()   {}
-func (x *PrefixExpr) expr() {}
-func (x *InfixExpr) expr()  {}
+func (x *UnaryExpr) expr()  {}
+func (x *BinaryExpr) expr() {}
+func (x *IfExpr) expr()     {}
+func (x *FnExpr) expr()     {}
+func (x *CallExpr) expr()   {}
 
 func (x IdentExpr) MarshalJSON() ([]byte, error) {
 	return addType(x, "identifier_expression")
@@ -58,25 +78,41 @@ func (x BoolExpr) MarshalJSON() ([]byte, error) {
 	return addType(x, "bool_expression")
 }
 
-func (x PrefixExpr) MarshalJSON() ([]byte, error) {
-	return addType(x, "prefix_expression")
+func (x UnaryExpr) MarshalJSON() ([]byte, error) {
+	return addType(x, "unary_expression")
 }
 
-func (x InfixExpr) MarshalJSON() ([]byte, error) {
-	return addType(x, "infix_expression")
+func (x BinaryExpr) MarshalJSON() ([]byte, error) {
+	return addType(x, "binary_expression")
+}
+
+func (x IfExpr) MarshalJSON() ([]byte, error) {
+	return addType(x, "if_expression")
+}
+
+func (x FnExpr) MarshalJSON() ([]byte, error) {
+	return addType(x, "function_expression")
+}
+
+func (x CallExpr) MarshalJSON() ([]byte, error) {
+	return addType(x, "call_expression")
 }
 
 type LetStmt struct {
 	Ident *IdentExpr `json:"identifier"`
-	Value Expr       `json:"value"`
+	Expr  Expr       `json:"value"`
 }
 
 type ReturnStmt struct {
-	Value Expr `json:"value"`
+	Expr Expr `json:"value"`
 }
 
 type ExprStmt struct {
 	Expr Expr `json:"expression"`
+}
+
+type BlockStmt struct {
+	Stmts []Stmt `json:"statements"`
 }
 
 func (x *LetStmt) stmt()    {}
@@ -93,6 +129,10 @@ func (x ReturnStmt) MarshalJSON() ([]byte, error) {
 
 func (x ExprStmt) MarshalJSON() ([]byte, error) {
 	return addType(x, "expression_statement")
+}
+
+func (x BlockStmt) MarshalJSON() ([]byte, error) {
+	return addType(x, "block_statement")
 }
 
 func (x Program) MarshalJSON() ([]byte, error) {
@@ -121,5 +161,30 @@ func addType(stmt any, typ string) ([]byte, error) {
 		newValue.Field(i + 1).Set(value.Field(i))
 	}
 
-	return json.Marshal(newValue.Interface())
+	return marshal(newValue.Interface())
+}
+
+func marshal(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+
+	bytes := buf.Bytes()
+	return bytes, nil
+}
+
+func MarshalIndent(v any, prefix, indent string) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent(prefix, indent)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+
+	bytes := buf.Bytes()
+	return bytes, nil
 }

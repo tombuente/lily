@@ -3,18 +3,19 @@ package token
 const (
 	Illegal Type = "illegal"
 
-	Semicolon       Type = "semicolon"
-	ExclamationMark Type = "exclamation_mark"
+	Semicolon Type = "semicolon"
+	Bang      Type = "exclamation_mark"
+	Comma     Type = ","
 
-	Assign   Type = "assign"
-	Minus    Type = "minus"
-	Plus     Type = "plus"
-	Asterisk Type = "asterix"
-	Slash    Type = "slash"
-	EQ       Type = "equal"
-	NotEQ    Type = "not_equal"
-	Less     Type = "less"
-	Greater  Type = "greater"
+	Assign   Type = "="
+	Minus    Type = "-"
+	Plus     Type = "+"
+	Asterisk Type = "*"
+	Slash    Type = "/"
+	EQ       Type = "=="
+	NotEQ    Type = "!="
+	Less     Type = "<"
+	Greater  Type = ">"
 
 	Int   Type = "int"
 	True  Type = "true"
@@ -23,9 +24,13 @@ const (
 
 	Let    Type = "let"
 	Return Type = "return"
+	If     Type = "if"
+	Fn     Type = "fn"
 
-	LParan Type = "left_paranthese"
-	RParan Type = "right_parantheses"
+	LParan Type = "("
+	RParan Type = ")"
+	LBrace Type = "{"
+	RBrace Type = "}"
 
 	EOF Type = "eof"
 )
@@ -33,8 +38,10 @@ const (
 var keywords = map[string]Type{
 	"let":    Let,
 	"return": Return,
+	"if":     If,
 	"true":   True,
 	"false":  False,
+	"fn":     Fn,
 }
 
 type Type string

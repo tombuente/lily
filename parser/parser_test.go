@@ -1,89 +1,86 @@
 package parser
 
 import (
-	"encoding/json"
-	"fmt"
+	"reflect"
 	"testing"
 
+	"github.com/tombuente/lily/ast"
 	"github.com/tombuente/lily/lexer"
 )
 
-// func TestLetStatements(t *testing.T) {
-// 	tests := []struct {
-// 		src           string
-// 		expectedIdent string
-// 		expectedValue any
-// 	}{
-// 		{"let x = 5", "x", 5},
-// 	}
+func TestParseIdentExpr(t *testing.T) {
+	src := "ii"
+	expected := &ast.IdentExpr{Value: "ii"}
+	p := New(lexer.New(src))
 
-// 	for _, tt := range tests {
-// 		l := lexer.New(tt.src)
-// 		p := New(l)
-// 		prog, err := p.Parse()
-// 		if err != nil {
-// 			t.Error(err)
-// 			return
-// 		}
-
-// 		for i, test := range tests {
-// 			statement := prog.Stmts[i]
-// 			if !testLetStatement(t, statement, test.expectedIdent) {
-// 				return
-// 			}
-// 		}
-// 	}
-// }
-
-// func testLetStatement(t *testing.T, statement ast.Stmt, name string) bool {
-// 	letStmt, ok := statement.(*ast.LetStmt)
-// 	if !ok {
-// 		t.Errorf("statement not *ast.LetStatement. got=%v", statement)
-// 		return false
-// 	}
-
-// 	if letStmt.Ident.Value != name {
-// 		t.Errorf("letStmt.Name.Value not '%v'. got=%v", name, letStmt.Ident.Value)
-// 		return false
-// 	}
-
-// 	if letStmt.Ident.Token.Literal != name {
-// 		t.Errorf("letStmt.Name not '%v'. got=%v", name, letStmt.Ident.Token.Literal)
-// 		return false
-// 	}
-
-// 	return true
-// }
-
-func TestBadStmt(t *testing.T) {
-	src := "let 0"
-
-	l := lexer.New(src)
-	p := New(l)
-	prog, err := p.Parse()
-
-	if len(prog.Stmts) != 0 {
-		t.Errorf("program should have no statements, got %v", len(prog.Stmts))
+	expr, err := p.parseIdentExpr()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err == nil {
-		t.Errorf("Parse should return error")
+	if !reflect.DeepEqual(expected, expr) {
+		t.Fatalf("Expected %v, got %v", expected, expr)
 	}
 }
 
-func TestPrefixExprStmt(t *testing.T) {
-	src := `1+1; 1+1`
+func TestParseIntExpr(t *testing.T) {
+	src := "1"
+	expected := &ast.IntExpr{Value: 1}
+	p := New(lexer.New(src))
 
-	l := lexer.New(src)
-	p := New(l)
+	expr, err := p.parseIntExpr()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(expected, expr) {
+		t.Fatalf("Expected %v, got %v", expected, expr)
+	}
+}
+
+func TestParseLetStmt(t *testing.T) {
+
+	src := "let x = 1"
+	expected := &ast.LetStmt{Ident: &ast.IdentExpr{Value: "x"}, Expr: &ast.IntExpr{Value: 1}}
+	p := New(lexer.New(src))
+
+	stmt, err := p.parseLetStmt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(expected, stmt) {
+		t.Fatalf("Expected %v, got %v", expected, stmt)
+	}
+}
+
+func TestManual(t *testing.T) {
+
+	src := "let add = fn(x, y) { return x + y }; add(1, 2)"
+	p := New(lexer.New(src))
+
 	prog, err := p.Parse()
 	if err != nil {
-		t.Error(err)
+		t.Fatalf("Failed to parse: %v", err)
 	}
 
-	jsonData, err := json.MarshalIndent(prog, "", "    ")
+	jsonData, err := ast.MarshalIndent(prog, "", "    ")
 	if err != nil {
-		fmt.Println("Error marshaling JSON:", err)
+		t.Fatalf("error marshaling JSON: %v", err)
 		return
 	}
-	fmt.Println(string(jsonData))
+	t.Log(string(jsonData))
 }
+
+// type testLexer struct {
+// 	toks []token.Token
+// 	pos  int
+// }
+
+// func newLexer(toks []token.Token) *testLexer {
+// 	toks = append(toks, token.Token{Type: token.EOF, Literal: "0"})
+// 	return &testLexer{toks: toks}
+// }
+
+// func (l *testLexer) Next() token.Token {
+// 	tok := l.toks[l.pos]
+// 	l.pos++
+// 	return tok
+// }
