@@ -78,16 +78,17 @@ func New(lexer Lexer) *Parser {
 	return p
 }
 
-func (p *Parser) Parse() (ast.Program, error) {
+func (p *Parser) Parse() (*ast.Program, error) {
 	stmts := []ast.Stmt{}
 	for p.tok.Type != token.EOF {
 		stmt, err := p.parseStmt()
 		if err != nil {
-			return ast.Program{}, err
+			return nil, err
 		}
 		stmts = append(stmts, stmt)
 	}
-	return ast.Program{Stmts: stmts}, nil
+
+	return &ast.Program{Stmts: stmts}, nil
 }
 
 func (p *Parser) parseExpr(prec int) (ast.Expr, error) {
@@ -160,28 +161,28 @@ func (p *Parser) parseIfExpr() (ast.Expr, error) {
 		return nil, fmt.Errorf("if expression must start with \"%v\": %w", token.If, err)
 	}
 
-	// fmt.Println("Curr", p.tok)
-	// if err := p.expectNext(token.LParan); err != nil { // consume "("
-	// 	return nil, fmt.Errorf("if expression condition expression must start with \"%v\": %w", token.LParan, err)
-	// }
-
 	condition, err := p.parseExpr(none)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse if expression condition expression: %w", err)
 	}
 
-	// if err := p.expectNext(token.RParan); err != nil { // consume ")"
-	// 	return nil, fmt.Errorf("if expression condition expression must end with \"%v\": %w", token.RParan, err)
-	// }
-
 	consequence, err := p.parseBlockStmt()
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse if expression consequence statement: %w", err)
+		return nil, fmt.Errorf("failed to parse if expression consequence: %w", err)
+	}
+
+	var alternative *ast.BlockStmt
+	if p.tok.Type == token.LBrace {
+		alternative, err = p.parseBlockStmt()
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse if expression alternative: %w", err)
+		}
 	}
 
 	return &ast.IfExpr{
 		Condition:   condition,
 		Consequence: consequence,
+		Alternative: alternative,
 	}, nil
 }
 

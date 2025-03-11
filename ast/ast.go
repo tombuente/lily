@@ -118,6 +118,7 @@ type BlockStmt struct {
 func (x *LetStmt) stmt()    {}
 func (x *ReturnStmt) stmt() {}
 func (x *ExprStmt) stmt()   {}
+func (x *BlockStmt) stmt()  {}
 
 func (x LetStmt) MarshalJSON() ([]byte, error) {
 	return addType(x, "let_statement")

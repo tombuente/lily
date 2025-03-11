@@ -52,8 +52,9 @@ func TestParseLetStmt(t *testing.T) {
 }
 
 func TestManual(t *testing.T) {
+	src := "-5"
 
-	src := "let add = fn(x, y) { return x + y }; add(1, 2)"
+	// src := "let add = fn(x, y) {\n  return x + y;\n}\nadd(1, 2);"
 	p := New(lexer.New(src))
 
 	prog, err := p.Parse()
@@ -68,19 +69,3 @@ func TestManual(t *testing.T) {
 	}
 	t.Log(string(jsonData))
 }
-
-// type testLexer struct {
-// 	toks []token.Token
-// 	pos  int
-// }
-
-// func newLexer(toks []token.Token) *testLexer {
-// 	toks = append(toks, token.Token{Type: token.EOF, Literal: "0"})
-// 	return &testLexer{toks: toks}
-// }
-
-// func (l *testLexer) Next() token.Token {
-// 	tok := l.toks[l.pos]
-// 	l.pos++
-// 	return tok
-// }
