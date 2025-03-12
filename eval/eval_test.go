@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
@@ -14,16 +15,13 @@ type evalTest struct {
 	expected object
 }
 
-type evalErrorTest struct {
-	name     string
-	src      string
-	expected errorType
+type errorTest struct {
+	name string
+	src  string
 }
 
 func TestEval(t *testing.T) {
 	tests := []evalTest{
-		{src: "-true", expected: &intObject{Value: 1}},
-		{src: "!1", expected: &intObject{Value: 1}},
 		{src: "1", expected: &intObject{Value: 1}},
 		{src: "-1", expected: &intObject{Value: -1}},
 		{src: "1 + 1", expected: &intObject{Value: 2}},
@@ -63,10 +61,21 @@ return 1;
 		},
 	}
 
-	runEvalTest(t, tests)
+	test(t, tests)
 }
 
-func runEvalTest(t *testing.T, tests []evalTest) {
+func TestTypeError(t *testing.T) {
+	tests := []errorTest{
+		{src: "-true"},
+		{src: "!1"},
+		{src: "1 > true; 1"},
+		{name: "nested type error", src: "true == (1 > true); 1"},
+	}
+
+	testError[*typeError](t, tests)
+}
+
+func test(t *testing.T, tests []evalTest) {
 	t.Helper()
 	for _, tt := range tests {
 		name := tt.name
@@ -75,33 +84,33 @@ func runEvalTest(t *testing.T, tests []evalTest) {
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Helper()
-			res := eval(t, tt.src)
+			res, err := eval(t, tt.src)
+			if err != nil {
+				t.Fatalf("eval failed with error: %v", err)
+			}
 			if !reflect.DeepEqual(res, tt.expected) {
-				t.Errorf("src=\"%v\", want=%v, got=%v", tt.src, tt.expected, res)
+				t.Fatalf("src=\"%v\", want=%v, got=%v", tt.src, tt.expected, res)
 			}
 		})
 	}
 }
 
-func TestError(t *testing.T) {
-	tests := []evalErrorTest{
-		{src: "-true", expected: typeError},
-		{src: "!1", expected: typeError},
-	}
-
+func testError[T error](t *testing.T, tests []errorTest) {
+	t.Helper()
 	for _, tt := range tests {
 		name := tt.name
 		if name == "" {
 			name = tt.src
 		}
 		t.Run(name, func(t *testing.T) {
-			res := eval(t, tt.src)
-			errObj, ok := res.(*errorObject)
-			if !ok {
-				t.Error("Result is not *errorObject")
+			t.Helper()
+			_, err := eval(t, tt.src)
+			if err == nil {
+				t.Fatalf("eval did not return error")
 			}
-			if errObj.errorType != tt.expected {
-				t.Errorf("src=%v, want=%v, got=%v", tt.src, tt.expected, errObj.errorType)
+			var asErr T
+			if !errors.As(err, &asErr) {
+				t.Fatalf("src=%v, want=%v, got=%v", tt.src, asErr, err)
 			}
 		})
 	}
@@ -109,13 +118,13 @@ func TestError(t *testing.T) {
 
 // eval parses and evaluates the given source code, returning the result.
 // It fails the test on parsing errors.
-func eval(t *testing.T, src string) object {
+func eval(t *testing.T, src string) (object, error) {
 	t.Helper()
 	l := lexer.New(src)
 	p := parser.New(l)
 	prog, err := p.Parse()
 	if err != nil {
-		t.Errorf("Failed to parse program: %v", err)
+		t.Fatalf("Failed to parse program: %v", err)
 	}
 	return Eval(prog)
 }

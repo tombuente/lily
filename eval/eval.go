@@ -1,6 +1,8 @@
 package eval
 
 import (
+	"fmt"
+
 	"github.com/tombuente/lily/ast"
 )
 
@@ -10,10 +12,10 @@ var (
 	falseInstance = &boolObject{Value: false}
 )
 
-func Eval(node any) object {
+func Eval(node any) (object, error) {
 	switch node := node.(type) {
 	case *ast.IntExpr:
-		return &intObject{Value: node.Value}
+		return evalIntExpr(node)
 	case *ast.BoolExpr:
 		return evalBoolExpr(node)
 	case *ast.UnaryExpr:
@@ -23,7 +25,7 @@ func Eval(node any) object {
 	case *ast.BinaryExpr:
 		return evalBinaryExpr(node)
 	case *ast.ExprStmt:
-		return Eval(node.Expr)
+		return evalExprStmt(node)
 	case *ast.ReturnStmt:
 		return evalReturnStmt(node)
 	case *ast.BlockStmt:
@@ -31,15 +33,22 @@ func Eval(node any) object {
 	case *ast.Program:
 		return evalProgram(node)
 	}
-	return nilInstance
+	return nil, &internalError{msg: "node not supported"}
 }
 
-func evalBoolExpr(expr *ast.BoolExpr) object {
-	return boolInstance(expr.Value)
+func evalIntExpr(expr *ast.IntExpr) (object, error) {
+	return &intObject{Value: expr.Value}, nil
 }
 
-func evalUnaryExpr(expr *ast.UnaryExpr) object {
-	obj := Eval(expr.Expr)
+func evalBoolExpr(expr *ast.BoolExpr) (object, error) {
+	return boolInstance(expr.Value), nil
+}
+
+func evalUnaryExpr(expr *ast.UnaryExpr) (object, error) {
+	obj, err := Eval(expr.Expr)
+	if err != nil {
+		return nil, err
+	}
 
 	switch expr.Op {
 	case "-":
@@ -48,33 +57,39 @@ func evalUnaryExpr(expr *ast.UnaryExpr) object {
 		return evalUnaryBangExpr(obj)
 	}
 
-	return nilInstance
+	// not reachable if parser works
+	return nil, &internalError{msg: fmt.Sprintf("operator '%v' not implemented for unary expression", expr.Op)}
 }
 
-func evalUnaryMinusExpr(obj object) object {
+func evalUnaryMinusExpr(obj object) (object, error) {
 	intObj, ok := obj.(*intObject)
 	if !ok {
-		return newErrorObject(typeError, "bad operand type for unary -: \"%v\"", obj.DebugTypeInfo())
+		return nil, &typeError{msg: fmt.Sprintf("bad operand type for unary -: '%v'", obj.DebugTypeInfo())}
 	}
 
-	return &intObject{Value: -intObj.Value}
+	return &intObject{Value: -intObj.Value}, nil
 }
 
-func evalUnaryBangExpr(obj object) object {
+func evalUnaryBangExpr(obj object) (object, error) {
 	switch obj {
 	case trueInstance:
-		return falseInstance
+		return falseInstance, nil
 	case falseInstance:
-		return trueInstance
+		return trueInstance, nil
 	}
-	return newErrorObject(typeError, "bad operand type for unary !: \"%v\"", obj.DebugTypeInfo())
+
+	return nil, &typeError{msg: fmt.Sprintf("bad operand type for unary !: '%v'", obj.DebugTypeInfo())}
 }
 
-func evalIfExpr(expr *ast.IfExpr) object {
-	res := Eval(expr.Condition)
-	condition, ok := res.(*boolObject)
+func evalIfExpr(expr *ast.IfExpr) (object, error) {
+	conditionRes, err := Eval(expr.Condition)
+	if err != nil {
+		return nil, err
+	}
+
+	condition, ok := conditionRes.(*boolObject)
 	if !ok {
-		return newErrorObject(typeError, "if condition must evaluate to bool: \"%v\"", res.DebugTypeInfo())
+		return nil, &typeError{msg: fmt.Sprintf("if condition must evaluate to bool: '%v'", conditionRes.DebugTypeInfo())}
 	}
 
 	if condition.Value {
@@ -82,12 +97,19 @@ func evalIfExpr(expr *ast.IfExpr) object {
 	} else if expr.Alternative != nil {
 		return Eval(expr.Alternative)
 	}
-	return nilInstance
+	return nilInstance, nil
 }
 
-func evalBinaryExpr(expr *ast.BinaryExpr) object {
-	left := Eval(expr.Left)
-	right := Eval(expr.Right)
+func evalBinaryExpr(expr *ast.BinaryExpr) (object, error) {
+	left, err := Eval(expr.Left)
+	if err != nil {
+		return nil, err
+	}
+
+	right, err := Eval(expr.Right)
+	if err != nil {
+		return nil, err
+	}
 
 	leftInt, leftOk := left.(*intObject)
 	rightInt, rightOk := right.(*intObject)
@@ -101,67 +123,79 @@ func evalBinaryExpr(expr *ast.BinaryExpr) object {
 		return evalBinaryBoolExpr(expr.Op, leftBool, rightBool)
 	}
 
-	return nilInstance
+	return nil, &typeError{msg: fmt.Sprintf("unsupported operand type(s) for '%v': '%v' '%v'", expr.Op, left.DebugTypeInfo(), right.DebugTypeInfo())}
 }
 
-func evalBinaryIntExpr(op string, left, right *intObject) object {
+func evalBinaryIntExpr(op string, left, right *intObject) (object, error) {
 	switch op {
 	case "+":
-		return &intObject{Value: left.Value + right.Value}
+		return &intObject{Value: left.Value + right.Value}, nil
 	case "-":
-		return &intObject{Value: left.Value - right.Value}
+		return &intObject{Value: left.Value - right.Value}, nil
 	case "*":
-		return &intObject{Value: left.Value * right.Value}
+		return &intObject{Value: left.Value * right.Value}, nil
 	case "/":
-		return &intObject{Value: left.Value / right.Value}
+		return &intObject{Value: left.Value / right.Value}, nil
 	case "<":
-		return boolInstance(left.Value < right.Value)
+		return boolInstance(left.Value < right.Value), nil
 	case ">":
-		return boolInstance(left.Value > right.Value)
+		return boolInstance(left.Value > right.Value), nil
 	case "==":
-		return boolInstance(left.Value == right.Value)
+		return boolInstance(left.Value == right.Value), nil
 	case "!=":
-		return boolInstance(left.Value != right.Value)
+		return boolInstance(left.Value != right.Value), nil
 	}
-	panic("evalBinaryIntExpr: op not implemented")
+	return nil, &typeError{msg: fmt.Sprintf("unsupported operand type(s) for '%v': '%v' '%v'", op, left.DebugTypeInfo(), right.DebugTypeInfo())}
 }
 
-func evalBinaryBoolExpr(op string, left, right *boolObject) object {
+func evalBinaryBoolExpr(op string, left, right *boolObject) (object, error) {
 	switch op {
 	case "==":
-		return boolInstance(left.Value == right.Value)
+		return boolInstance(left.Value == right.Value), nil
 	case "!=":
-		return boolInstance(left.Value != right.Value)
+		return boolInstance(left.Value != right.Value), nil
 	}
-	panic("evalBinaryBoolExpr: op not implemented")
+	return nil, &typeError{msg: fmt.Sprintf("unsupported operand type(s) for '%v': '%v' '%v'", op, left.DebugTypeInfo(), right.DebugTypeInfo())}
 }
 
-func evalReturnStmt(stmt *ast.ReturnStmt) object {
-	val := Eval(stmt.Expr)
-	return &returnObject{Value: val}
+func evalExprStmt(stmt *ast.ExprStmt) (object, error) {
+	return Eval(stmt.Expr)
 }
 
-func evalBlockStmt(blockStmt *ast.BlockStmt) object {
+func evalReturnStmt(stmt *ast.ReturnStmt) (object, error) {
+	obj, err := Eval(stmt.Expr)
+	if err != nil {
+		return nil, err
+	}
+
+	return &returnObject{Value: obj}, nil
+}
+
+func evalBlockStmt(blockStmt *ast.BlockStmt) (object, error) {
 	return evalStmts(blockStmt.Stmts, false)
 }
 
-func evalProgram(prog *ast.Program) object {
+func evalProgram(prog *ast.Program) (object, error) {
 	return evalStmts(prog.Stmts, true)
 }
 
-func evalStmts(stmts []ast.Stmt, unwrap bool) object {
-	var res object
+func evalStmts(stmts []ast.Stmt, unwrap bool) (object, error) {
+	var obj object
+	var err error
 	for _, statement := range stmts {
-		res = Eval(statement)
+		obj, err = Eval(statement)
+		if err != nil {
+			return nil, err
+		}
 
-		if retObj, ok := res.(*returnObject); ok {
+		if retObj, ok := obj.(*returnObject); ok {
 			if unwrap {
-				return retObj.Value
+				return retObj.Value, nil
 			}
-			return retObj
+			return retObj, nil
 		}
 	}
-	return res
+	return obj, nil
 }
 
 func boolInstance(val bool) object {
