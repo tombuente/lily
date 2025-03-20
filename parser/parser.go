@@ -9,24 +9,26 @@ import (
 )
 
 const (
-	none   int = iota // no precedence
-	eq                // ==
-	less              // < or >
-	sum               // + or -
-	mul               // * or /
-	prefix            // !
-	call              // func call or grouped expr (1 + 2) * 3
+	none int = iota // no precedence
+	assign
+	eq     // ==
+	less   // < or >
+	sum    // + or -
+	mul    // * or /
+	prefix // !
+	call   // grouped expr or function call
 )
 
 var precedences = map[token.Type]int{
-	token.Plus:     sum,
-	token.Minus:    sum,
-	token.Asterisk: mul,
-	token.Slash:    mul,
+	token.Assign:   assign,
 	token.EQ:       eq,
 	token.NotEQ:    eq,
 	token.Less:     less,
 	token.Greater:  less,
+	token.Plus:     sum,
+	token.Minus:    sum,
+	token.Asterisk: mul,
+	token.Slash:    mul,
 	token.LParan:   call,
 }
 
@@ -52,26 +54,28 @@ func New(lexer Lexer) *Parser {
 	p := &Parser{l: lexer}
 
 	p.prefixParseFns = make(map[token.Type]prefixParseFn)
-	p.prefixParseFns[token.Ident] = p.parseIdentExpr
-	p.prefixParseFns[token.Int] = p.parseIntExpr
-	p.prefixParseFns[token.True] = p.parseBoolExpr
-	p.prefixParseFns[token.False] = p.parseBoolExpr
-	p.prefixParseFns[token.If] = p.parseIfExpr
-	p.prefixParseFns[token.LParan] = p.parseGroupedExpr
-	p.prefixParseFns[token.Fn] = p.parseFnExpr
-	p.prefixParseFns[token.Minus] = p.parseUnaryExpr
-	p.prefixParseFns[token.Bang] = p.parseUnaryExpr
+	p.prefixParseFns[token.Ident] = p.parseIdent
+	p.prefixParseFns[token.Int] = p.parseInt
+	p.prefixParseFns[token.True] = p.parseBool
+	p.prefixParseFns[token.False] = p.parseBool
+	p.prefixParseFns[token.String] = p.parseString
+	p.prefixParseFns[token.If] = p.parseIf
+	p.prefixParseFns[token.LParan] = p.parseGroup
+	p.prefixParseFns[token.Fn] = p.parseFunction
+	p.prefixParseFns[token.Minus] = p.parseUnaryOp
+	p.prefixParseFns[token.Bang] = p.parseUnaryOp
 
 	p.infixParseFns = make(map[token.Type]infixParseFn)
-	p.infixParseFns[token.Plus] = p.parseBinaryExpr
-	p.infixParseFns[token.Minus] = p.parseBinaryExpr
-	p.infixParseFns[token.Asterisk] = p.parseBinaryExpr
-	p.infixParseFns[token.Slash] = p.parseBinaryExpr
-	p.infixParseFns[token.EQ] = p.parseBinaryExpr
-	p.infixParseFns[token.NotEQ] = p.parseBinaryExpr
-	p.infixParseFns[token.Less] = p.parseBinaryExpr
-	p.infixParseFns[token.Greater] = p.parseBinaryExpr
-	p.infixParseFns[token.LParan] = p.parseCallExpr
+	p.infixParseFns[token.Plus] = p.parseBinaryOp
+	p.infixParseFns[token.Minus] = p.parseBinaryOp
+	p.infixParseFns[token.Asterisk] = p.parseBinaryOp
+	p.infixParseFns[token.Slash] = p.parseBinaryOp
+	p.infixParseFns[token.EQ] = p.parseBinaryOp
+	p.infixParseFns[token.NotEQ] = p.parseBinaryOp
+	p.infixParseFns[token.Less] = p.parseBinaryOp
+	p.infixParseFns[token.Greater] = p.parseBinaryOp
+	p.infixParseFns[token.LParan] = p.parseCall
+	p.infixParseFns[token.Assign] = p.parseAssingment
 
 	p.next()
 
@@ -94,92 +98,88 @@ func (p *Parser) Parse() (*ast.Program, error) {
 func (p *Parser) parseExpr(prec int) (ast.Expr, error) {
 	parsePrefix, ok := p.prefixParseFns[p.tok.Type]
 	if !ok {
-		return nil, fmt.Errorf("missing prefix parse function for \"%v\"", p.tok.Type)
+		return nil, fmt.Errorf("missing prefix parse function for '%v'", p.tok.Type)
 	}
-	left, err := parsePrefix()
+	lhs, err := parsePrefix()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse prefix: %w", err)
 	}
 
-	// LBrace opens a new statement block
-	for p.tok.Type != token.Semicolon && p.tok.Type != token.LBrace && prec < precedence(p.tok.Type) {
+	for prec < precedence(p.tok.Type) {
 		parseInfix, ok := p.infixParseFns[p.tok.Type]
 		if !ok {
-			return nil, fmt.Errorf("missing infix parse function for \"%v\v", p.tok.Type)
+			return nil, fmt.Errorf("missing infix parse function for '%v'", p.tok.Type)
 		}
 
-		left, err = parseInfix(left)
+		lhs, err = parseInfix(lhs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse infix: %w", err)
 		}
 	}
 
-	return left, nil
+	return lhs, nil
 }
 
-func (p *Parser) parseIdentExpr() (ast.Expr, error) {
-	if err := p.expect(token.Ident); err != nil {
-		return nil, err
-	}
+func (p *Parser) parseIdent() (ast.Expr, error) {
 	value := p.tok.Literal
-
 	p.next()
-	return &ast.IdentExpr{
+
+	return &ast.Ident{
 		Value: value,
 	}, nil
 }
 
-func (p *Parser) parseIntExpr() (ast.Expr, error) {
-	if err := p.expect(token.Int); err != nil {
-		return nil, err
-	}
+func (p *Parser) parseInt() (ast.Expr, error) {
 	value, err := strconv.ParseInt(p.tok.Literal, 0, 64)
 	if err != nil {
 		return nil, err
 	}
 	p.next()
 
-	return &ast.IntExpr{
+	return &ast.Int{
 		Value: value,
 	}, nil
 }
 
-func (p *Parser) parseBoolExpr() (ast.Expr, error) {
-	// TODO: verify that p.tok is bool
-
+func (p *Parser) parseBool() (ast.Expr, error) {
 	value := p.tok.Type == token.True
 	p.next()
 
-	return &ast.BoolExpr{
+	return &ast.Bool{
 		Value: value,
 	}, nil
 }
 
-// if <expr> { <expr> } { <expr> }
-func (p *Parser) parseIfExpr() (ast.Expr, error) {
-	if err := p.expectNext(token.If); err != nil { // consume "if"
-		return nil, fmt.Errorf("if expression must start with \"%v\": %w", token.If, err)
-	}
+func (p *Parser) parseString() (ast.Expr, error) {
+	value := p.tok.Literal
+	p.next()
+
+	return &ast.String{Value: value}, nil
+}
+
+// if <condition> { <consequence> } { <alternative> }
+func (p *Parser) parseIf() (ast.Expr, error) {
+	p.next()
 
 	condition, err := p.parseExpr(none)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse if expression condition expression: %w", err)
+		return nil, fmt.Errorf("failed to parse if condition: %w", err)
 	}
 
 	consequence, err := p.parseBlockStmt()
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse if expression consequence: %w", err)
+		return nil, fmt.Errorf("failed to parse if consequence: %w", err)
 	}
 
 	var alternative *ast.BlockStmt
 	if p.tok.Type == token.LBrace {
 		alternative, err = p.parseBlockStmt()
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse if expression alternative: %w", err)
+			return nil, fmt.Errorf("failed to parse if alternative: %w", err)
 		}
 	}
 
-	return &ast.IfExpr{
+	return &ast.If{
 		Condition:   condition,
 		Consequence: consequence,
 		Alternative: alternative,
@@ -187,76 +187,67 @@ func (p *Parser) parseIfExpr() (ast.Expr, error) {
 }
 
 // (<ident> + <ident>)
-func (p *Parser) parseGroupedExpr() (ast.Expr, error) {
-	if err := p.expectNext(token.LParan); err != nil { // consume "("
-		return nil, fmt.Errorf("grouped expression must start with \"%v\v: %w", token.LParan, err)
-	}
+func (p *Parser) parseGroup() (ast.Expr, error) {
+	p.next()
 
-	expr, err := p.parseExpr(none)
+	group, err := p.parseExpr(none)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse expression: %w", err)
+		return nil, err
 	}
 
-	if err := p.expectNext(token.RParan); err != nil { // consume ")"
-		return nil, fmt.Errorf("grouped expression must start with \"%v\v: %w", token.RParan, err)
+	if err := p.expectNext(token.RParan); err != nil {
+		return nil, fmt.Errorf("group must start with '%v': %w", token.RParan, err)
 	}
 
-	return expr, nil
+	return group, nil
 }
 
-// fn(<ident>, <ident>) { <stmt> }
-func (p *Parser) parseFnExpr() (ast.Expr, error) {
-	if err := p.expectNext(token.Fn); err != nil {
-		return nil, fmt.Errorf("function expression must start with \"%v\": %w", token.Fn, err)
-	}
+// fn(<ident>, <ident>) { <statement> }
+func (p *Parser) parseFunction() (ast.Expr, error) {
+	p.next() // consume fn
 
-	params, err := p.parseFnExprParams()
+	params, err := p.parseFunctionParams()
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse function expression parameter list: %w", err)
+		return nil, fmt.Errorf("failed to parse function parameter list: %w", err)
 	}
 
 	body, err := p.parseBlockStmt()
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse function expression body statement: %w", err)
+		return nil, fmt.Errorf("failed to parse function body: %w", err)
 	}
 
-	return &ast.FnExpr{
+	return &ast.Function{
 		Params: params,
 		Body:   body,
 	}, nil
 }
 
 // (<ident>, <ident>)
-func (p *Parser) parseFnExprParams() ([]*ast.IdentExpr, error) {
+func (p *Parser) parseFunctionParams() ([]*ast.Ident, error) {
 	if err := p.expectNext(token.LParan); err != nil {
-		return nil, fmt.Errorf("function expression parameters must start with \"%v\": %w", token.LParan, err)
+		return nil, fmt.Errorf("function parameters must start with '%v': %w", token.LParan, err)
 	}
 
-	idents := []*ast.IdentExpr{}
-
+	idents := []*ast.Ident{}
 	if p.tok.Type == token.RParan {
 		p.next()
 		return idents, nil
 	}
 
-	ident := &ast.IdentExpr{Value: p.tok.Literal}
-	idents = append(idents, ident)
-	p.next()
-
-	for p.tok.Type == token.Comma {
-		p.next() // consume ","
-
-		if err := p.expect(token.Ident); err != nil {
-			return nil, err
-		}
-
-		ident := &ast.IdentExpr{Value: p.tok.Literal}
+	for p.tok.Type != token.RParan {
+		ident := &ast.Ident{Value: p.tok.Literal}
 		idents = append(idents, ident)
 		p.next()
+
+		// Consume the comma "," if present after the argument.
+		// Comma will not be there if this was the last argument.
+		if p.tok.Type == token.Comma {
+			p.next()
+		}
 	}
 
 	if err := p.expectNext(token.RParan); err != nil {
-		return nil, fmt.Errorf("function expression parameters must start with \"%v\": %w", token.RParan, err)
+		return nil, fmt.Errorf("function parameters must end with '%v': %w", token.RParan, err)
 	}
 
 	return idents, nil
@@ -264,87 +255,105 @@ func (p *Parser) parseFnExprParams() ([]*ast.IdentExpr, error) {
 
 // -<ident>
 // !<ident>
-func (p *Parser) parseUnaryExpr() (ast.Expr, error) {
-	op := p.tok.Literal // TODO: verify that p.tok.Type is prefix
+func (p *Parser) parseUnaryOp() (ast.Expr, error) {
+	op := p.tok.Literal
 	p.next()
 
-	expr, err := p.parseExpr(prefix)
+	rhs, err := p.parseExpr(prefix)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse expression: %w", err)
+		return nil, fmt.Errorf("failed to parse rhs: %w", err)
 	}
 
-	return &ast.UnaryExpr{
-		Op:   op,
-		Expr: expr,
+	return &ast.UnaryOp{
+		Op:  op,
+		Rhs: rhs,
 	}, nil
 }
 
 // <ident> + <ident>
 // <ident> * <ident>
-// ...
-func (p *Parser) parseBinaryExpr(left ast.Expr) (ast.Expr, error) {
+func (p *Parser) parseBinaryOp(left ast.Expr) (ast.Expr, error) {
 	op := p.tok.Literal
-
 	prec := precedence(p.tok.Type)
 	p.next()
-	right, err := p.parseExpr(prec)
+
+	rhs, err := p.parseExpr(prec)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse right expression: %w", err)
+		return nil, fmt.Errorf("failed to parse rhs: %w", err)
 	}
 
-	return &ast.BinaryExpr{
+	return &ast.BinaryOp{
 		Op:    op,
 		Left:  left,
-		Right: right,
+		Right: rhs,
 	}, nil
 }
 
-// <expr>(<expr>, <expr>, ..., <expr>)
-func (p *Parser) parseCallExpr(fn ast.Expr) (ast.Expr, error) {
-	args, err := p.parseCallExprArgs()
+// <lhs>(<ident>, <ident>, ..., <ident>)
+// lhs is either [ast.Function] or [ast.Ident]
+func (p *Parser) parseCall(lhs ast.Expr) (ast.Expr, error) {
+	args, err := p.parseCallArgs()
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse call expression args: %w", err)
+		return nil, fmt.Errorf("failed to parse call args: %w", err)
 	}
 
-	return &ast.CallExpr{
-		Fn:   fn,
+	return &ast.Call{
+		Lhs:  lhs,
 		Args: args,
 	}, nil
 }
 
-func (p *Parser) parseCallExprArgs() ([]ast.Expr, error) {
+func (p *Parser) parseCallArgs() ([]ast.Expr, error) {
 	if err := p.expectNext(token.LParan); err != nil {
-		return nil, fmt.Errorf("call expression args must start with \"%v\": %w", token.LParan, err)
+		return nil, fmt.Errorf("call args must start with '%v': %w", token.LParan, err)
 	}
 
 	args := []ast.Expr{}
-
 	if p.tok.Type == token.RParan {
 		p.next()
 		return args, nil
 	}
 
-	arg, err := p.parseExpr(none)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse first arg of call expression: %w", err)
-	}
-	args = append(args, arg)
-
-	for p.tok.Type == token.Comma {
-		p.next() // consume ","
-
+	for p.tok.Type != token.RParan {
 		arg, err := p.parseExpr(none)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse arg of call expression: %w", err)
+			return nil, fmt.Errorf("failed to parse arg of call: %w", err)
 		}
 		args = append(args, arg)
+
+		// Consume the comma "," if present after the argument.
+		// Comma will not be there if this was the last argument.
+		if p.tok.Type == token.Comma {
+			p.next()
+		}
 	}
 
-	if err := p.expectNext(token.RParan); err != nil {
-		return nil, fmt.Errorf("call expression args must start with \"%v\": %w", token.RParan, err)
+	if err := p.expectNext(token.RParan); err != nil { // consume ")"
+		return nil, fmt.Errorf("call args must end with '%v': %w", token.RParan, err)
 	}
 
 	return args, nil
+}
+
+func (p *Parser) parseAssingment(ident ast.Expr) (ast.Expr, error) {
+	identExpr, ok := ident.(*ast.Ident)
+	if !ok {
+		return nil, fmt.Errorf("indet is not *ast.Ident")
+	}
+
+	if err := p.expectNext(token.Assign); err != nil {
+		return nil, err
+	}
+
+	expr, err := p.parseExpr(none)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ast.Assignment{
+		Ident: identExpr,
+		Expr:  expr,
+	}, nil
 }
 
 func (p *Parser) parseStmt() (ast.Stmt, error) {
@@ -359,18 +368,16 @@ func (p *Parser) parseStmt() (ast.Stmt, error) {
 
 // let <ident> = <expr>
 func (p *Parser) parseLetStmt() (*ast.LetStmt, error) {
-	if err := p.expectNext(token.Let); err != nil { // consume "let"
-		return nil, err
-	}
+	p.next() // consume let
 
 	if err := p.expect(token.Ident); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("expected an identifier: %w", err)
 	}
-	ident := &ast.IdentExpr{Value: p.tok.Literal}
+	ident := &ast.Ident{Value: p.tok.Literal}
 	p.next()
 
-	if err := p.expectNext(token.Assign); err != nil { // consume "="
-		return nil, err
+	if err := p.expectNext(token.Assign); err != nil {
+		return nil, fmt.Errorf("expected assigment token: %w", err)
 	}
 
 	expr, err := p.parseExpr(none)
@@ -390,9 +397,7 @@ func (p *Parser) parseLetStmt() (*ast.LetStmt, error) {
 
 // return <expr>
 func (p *Parser) parseReturnStmt() (*ast.ReturnStmt, error) {
-	if err := p.expectNext(token.Return); err != nil { // consume "return"
-		return nil, err
-	}
+	p.next() // consume "return"
 
 	expr, err := p.parseExpr(none)
 	if err != nil {
@@ -426,7 +431,7 @@ func (p *Parser) parseExprStmt() (*ast.ExprStmt, error) {
 
 func (p *Parser) parseBlockStmt() (*ast.BlockStmt, error) {
 	if err := p.expectNext(token.LBrace); err != nil {
-		return nil, fmt.Errorf("block statement must start with \"%v\": %w", token.LBrace, err)
+		return nil, fmt.Errorf("block must start with '%v': %w", token.LBrace, err)
 	}
 
 	stmts := []ast.Stmt{}
@@ -439,7 +444,7 @@ func (p *Parser) parseBlockStmt() (*ast.BlockStmt, error) {
 	}
 
 	if err := p.expectNext(token.RBrace); err != nil {
-		return nil, fmt.Errorf("block statement must stop with \"%v\": %w", token.RBrace, err)
+		return nil, fmt.Errorf("block must stop with '%v': %w", token.RBrace, err)
 	}
 
 	if p.tok.Type == token.Semicolon {

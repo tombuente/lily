@@ -6,11 +6,17 @@ import (
 	"reflect"
 )
 
+type Node interface {
+	node()
+}
+
 type Expr interface {
+	Node
 	expr()
 }
 
 type Stmt interface {
+	Node
 	stmt()
 }
 
@@ -18,89 +24,121 @@ type Program struct {
 	Stmts []Stmt `json:"statements"`
 }
 
-type IdentExpr struct {
+func (x *Program) node() {}
+
+type Ident struct {
 	Value string `json:"value"`
 }
 
-type IntExpr struct {
+type Int struct {
 	Value int64 `json:"value"`
 }
 
-type BoolExpr struct {
+type Bool struct {
 	Value bool `json:"value"`
 }
 
-type UnaryExpr struct {
-	Op   string `json:"operator"`
-	Expr Expr   `json:"value"`
+type String struct {
+	Value string `json:"value"`
 }
 
-type BinaryExpr struct {
+type UnaryOp struct {
+	Op  string `json:"operator"`
+	Rhs Expr   `json:"value"`
+}
+
+type BinaryOp struct {
 	Op    string `json:"operator"`
 	Left  Expr   `json:"left"`
 	Right Expr   `json:"right"`
 }
 
-type IfExpr struct {
+type If struct {
 	Condition   Expr
 	Consequence *BlockStmt
 	Alternative *BlockStmt
 }
 
-type FnExpr struct {
-	Params []*IdentExpr `json:"params"`
-	Body   *BlockStmt   `json:"body"`
+type Function struct {
+	Params []*Ident   `json:"params"`
+	Body   *BlockStmt `json:"body"`
 }
 
-type CallExpr struct {
-	Fn   Expr // [IdentExpr] or [FnExpr]
+type Call struct {
+	Lhs  Expr // Ident or Function
 	Args []Expr
 }
 
-func (x *IdentExpr) expr()  {}
-func (x *IntExpr) expr()    {}
-func (x *BoolExpr) expr()   {}
-func (x *UnaryExpr) expr()  {}
-func (x *BinaryExpr) expr() {}
-func (x *IfExpr) expr()     {}
-func (x *FnExpr) expr()     {}
-func (x *CallExpr) expr()   {}
+type Assignment struct {
+	Ident *Ident
+	Expr  Expr
+}
 
-func (x IdentExpr) MarshalJSON() ([]byte, error) {
+func (x *Ident) expr()      {}
+func (x *Int) expr()        {}
+func (x *Bool) expr()       {}
+func (x *String) expr()     {}
+func (x *UnaryOp) expr()    {}
+func (x *BinaryOp) expr()   {}
+func (x *If) expr()         {}
+func (x *Function) expr()   {}
+func (x *Call) expr()       {}
+func (x *Assignment) expr() {}
+
+func (x *Ident) node()      {}
+func (x *Int) node()        {}
+func (x *Bool) node()       {}
+func (x *String) node()     {}
+func (x *UnaryOp) node()    {}
+func (x *BinaryOp) node()   {}
+func (x *If) node()         {}
+func (x *Function) node()   {}
+func (x *Call) node()       {}
+func (x *Assignment) node() {}
+
+func (x Ident) MarshalJSON() ([]byte, error) {
 	return addType(x, "identifier_expression")
 }
 
-func (x IntExpr) MarshalJSON() ([]byte, error) {
+func (x Int) MarshalJSON() ([]byte, error) {
 	return addType(x, "int_expression")
 }
 
-func (x BoolExpr) MarshalJSON() ([]byte, error) {
+func (x Bool) MarshalJSON() ([]byte, error) {
 	return addType(x, "bool_expression")
 }
 
-func (x UnaryExpr) MarshalJSON() ([]byte, error) {
+func (x String) MarshalJSON() ([]byte, error) {
+	return addType(x, "string_expression")
+}
+
+func (x UnaryOp) MarshalJSON() ([]byte, error) {
 	return addType(x, "unary_expression")
 }
 
-func (x BinaryExpr) MarshalJSON() ([]byte, error) {
+func (x BinaryOp) MarshalJSON() ([]byte, error) {
 	return addType(x, "binary_expression")
 }
 
-func (x IfExpr) MarshalJSON() ([]byte, error) {
+func (x If) MarshalJSON() ([]byte, error) {
 	return addType(x, "if_expression")
 }
 
-func (x FnExpr) MarshalJSON() ([]byte, error) {
+func (x Function) MarshalJSON() ([]byte, error) {
 	return addType(x, "function_expression")
 }
 
-func (x CallExpr) MarshalJSON() ([]byte, error) {
+func (x Call) MarshalJSON() ([]byte, error) {
 	return addType(x, "call_expression")
 }
 
+func (x Assignment) MarshalJSON() ([]byte, error) {
+	return addType(x, "assignment_expression")
+}
+
 type LetStmt struct {
-	Ident *IdentExpr `json:"identifier"`
-	Expr  Expr       `json:"value"`
+	Ident *Ident `json:"identifier"`
+	Expr  Expr   `json:"value"`
 }
 
 type ReturnStmt struct {
@@ -119,6 +157,11 @@ func (x *LetStmt) stmt()    {}
 func (x *ReturnStmt) stmt() {}
 func (x *ExprStmt) stmt()   {}
 func (x *BlockStmt) stmt()  {}
+
+func (x *LetStmt) node()    {}
+func (x *ReturnStmt) node() {}
+func (x *ExprStmt) node()   {}
+func (x *BlockStmt) node()  {}
 
 func (x LetStmt) MarshalJSON() ([]byte, error) {
 	return addType(x, "let_statement")

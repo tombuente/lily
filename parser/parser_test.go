@@ -8,64 +8,131 @@ import (
 	"github.com/tombuente/lily/lexer"
 )
 
-func TestParseIdentExpr(t *testing.T) {
-	src := "ii"
-	expected := &ast.IdentExpr{Value: "ii"}
-	p := New(lexer.New(src))
+type parserTest struct {
+	name     string
+	src      string
+	expected *ast.Program
+}
 
-	expr, err := p.parseIdentExpr()
-	if err != nil {
-		t.Fatal(err)
+func TestParse(t *testing.T) {
+	tests := []parserTest{
+		{
+			name: "identifier",
+			src:  "a",
+			expected: &ast.Program{
+				Stmts: []ast.Stmt{
+					&ast.ExprStmt{
+						Expr: &ast.Ident{Value: "a"},
+					},
+				},
+			},
+		},
+		{
+			name: "addition",
+			src:  "a + b",
+			expected: &ast.Program{
+				Stmts: []ast.Stmt{
+					&ast.ExprStmt{
+						Expr: &ast.BinaryOp{
+							Op:    "+",
+							Left:  &ast.Ident{Value: "a"},
+							Right: &ast.Ident{Value: "b"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "function declaration and call",
+			src:  "let add = fn(x, y) { x + y }; add(1, 2)",
+			expected: &ast.Program{
+				Stmts: []ast.Stmt{
+					&ast.LetStmt{
+						Ident: &ast.Ident{Value: "add"},
+						Expr: &ast.Function{
+							Params: []*ast.Ident{
+								{Value: "x"},
+								{Value: "y"},
+							},
+							Body: &ast.BlockStmt{
+								Stmts: []ast.Stmt{
+									&ast.ExprStmt{
+										Expr: &ast.BinaryOp{
+											Op:    "+",
+											Left:  &ast.Ident{Value: "x"},
+											Right: &ast.Ident{Value: "y"},
+										},
+									},
+								},
+							},
+						},
+					},
+					&ast.ExprStmt{
+						Expr: &ast.Call{
+							Lhs:  &ast.Ident{Value: "add"},
+							Args: []ast.Expr{&ast.Int{Value: 1}, &ast.Int{Value: 2}},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "if",
+			src:  "let x = if true { 1 } { 2 }",
+			expected: &ast.Program{
+				Stmts: []ast.Stmt{
+					&ast.LetStmt{
+						Ident: &ast.Ident{Value: "x"},
+						Expr: &ast.If{
+							Condition: &ast.Bool{Value: true},
+							Consequence: &ast.BlockStmt{
+								Stmts: []ast.Stmt{&ast.ExprStmt{Expr: &ast.Int{Value: 1}}},
+							},
+							Alternative: &ast.BlockStmt{
+								Stmts: []ast.Stmt{&ast.ExprStmt{Expr: &ast.Int{Value: 2}}},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
-	if !reflect.DeepEqual(expected, expr) {
-		t.Fatalf("Expected %v, got %v", expected, expr)
+
+	test(t, tests)
+}
+
+func test(t *testing.T, tests []parserTest) {
+	t.Helper()
+	for _, tt := range tests {
+		name := tt.name
+		if name == "" {
+			name = tt.src
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Helper()
+			program := parse(t, tt.src)
+			if !reflect.DeepEqual(program, tt.expected) {
+				expectedJSON, err := tt.expected.MarshalJSON()
+				if err != nil {
+					t.Fatalf("Failed to marshal expected: %v", err)
+				}
+				programJOSN, err := program.MarshalJSON()
+				if err != nil {
+					t.Fatalf("Failed to marshal program: %v", err)
+				}
+				t.Fatalf("want=%v, got %v", string(expectedJSON), string(programJOSN))
+			}
+		})
 	}
 }
 
-func TestParseIntExpr(t *testing.T) {
-	src := "1"
-	expected := &ast.IntExpr{Value: 1}
-	p := New(lexer.New(src))
-
-	expr, err := p.parseIntExpr()
+func parse(t *testing.T, src string) *ast.Program {
+	t.Helper()
+	l := lexer.New(src)
+	p := New(l)
+	program, err := p.Parse()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Parser has errors: %v", err)
 	}
-	if !reflect.DeepEqual(expected, expr) {
-		t.Fatalf("Expected %v, got %v", expected, expr)
-	}
-}
-
-func TestParseLetStmt(t *testing.T) {
-
-	src := "let x = 1"
-	expected := &ast.LetStmt{Ident: &ast.IdentExpr{Value: "x"}, Expr: &ast.IntExpr{Value: 1}}
-	p := New(lexer.New(src))
-
-	stmt, err := p.parseLetStmt()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(expected, stmt) {
-		t.Fatalf("Expected %v, got %v", expected, stmt)
-	}
-}
-
-func TestManual(t *testing.T) {
-	src := "-5"
-
-	// src := "let add = fn(x, y) {\n  return x + y;\n}\nadd(1, 2);"
-	p := New(lexer.New(src))
-
-	prog, err := p.Parse()
-	if err != nil {
-		t.Fatalf("Failed to parse: %v", err)
-	}
-
-	jsonData, err := ast.MarshalIndent(prog, "", "    ")
-	if err != nil {
-		t.Fatalf("error marshaling JSON: %v", err)
-		return
-	}
-	t.Log(string(jsonData))
+	return program
 }

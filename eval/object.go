@@ -1,22 +1,47 @@
 package eval
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/tombuente/lily/ast"
+)
 
 type object interface {
-	DebugTypeInfo() string
+	Info() string
+}
+
+type builtinFunc func(args ...object) (object, error)
+
+type environment struct {
+	local    map[string]object
+	captured *environment
 }
 
 type intObject struct {
-	Value int64
+	value int64
 }
 
 type boolObject struct {
-	Value bool
+	value bool
+}
+
+type stringObject struct {
+	value string
 }
 
 // Used for type assertion to return early
 type returnObject struct {
-	Value object
+	value object
+}
+
+type functionObject struct {
+	params   []*ast.Ident
+	body     *ast.BlockStmt
+	captured *environment
+}
+
+type builtinFunctionObject struct {
+	fn builtinFunc
 }
 
 type nilObject struct{}
@@ -30,19 +55,72 @@ type typeError struct {
 	msg string
 }
 
-func (x *intObject) DebugTypeInfo() string {
+type nameError struct {
+	msg string
+}
+
+func NewEnvironment() *environment {
+	return &environment{local: make(map[string]object)}
+}
+
+func (env *environment) get(key string) (object, bool) {
+	obj, ok := env.local[key]
+	if !ok && env.captured != nil {
+		obj, ok = env.captured.get(key)
+	}
+	return obj, ok
+}
+
+func (env *environment) set(key string, obj object) {
+	if env.captured != nil {
+		if _, ok := env.captured.get(key); ok {
+			env.captured.update(key, obj)
+		}
+	}
+	env.local[key] = obj
+}
+
+func (env *environment) update(key string, obj object) error {
+	if _, ok := env.local[key]; ok {
+		env.set(key, obj)
+		return nil
+	}
+
+	if env.captured != nil {
+		if _, ok := env.captured.get(key); ok {
+			env.captured.set(key, obj)
+			return nil
+		}
+	}
+
+	return &nameError{msg: fmt.Sprintf("'%v' is not defined", key)}
+}
+
+func (x *intObject) Info() string {
 	return "int"
 }
 
-func (x *boolObject) DebugTypeInfo() string {
+func (x *boolObject) Info() string {
 	return "bool"
 }
 
-func (x *returnObject) DebugTypeInfo() string {
+func (x *stringObject) Info() string {
+	return "string"
+}
+
+func (x *returnObject) Info() string {
 	return "return"
 }
 
-func (x *nilObject) DebugTypeInfo() string {
+func (x *functionObject) Info() string {
+	return "function"
+}
+
+func (x *builtinFunctionObject) Info() string {
+	return "buildin function"
+}
+
+func (x *nilObject) Info() string {
 	return "nil"
 }
 
@@ -54,5 +132,9 @@ func (x *internalError) Error() string {
 }
 
 func (x *typeError) Error() string {
+	return fmt.Sprintf("%v", x.msg)
+}
+
+func (x *nameError) Error() string {
 	return fmt.Sprintf("%v", x.msg)
 }

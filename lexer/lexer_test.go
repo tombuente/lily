@@ -6,10 +6,10 @@ import (
 )
 
 func TestManual(t *testing.T) {
-	src := "1-1"
+	src := `"test" "test2"`
 
 	l := New(src)
-	for range 4 {
+	for range 2 {
 		actual := l.Next()
 		fmt.Println(actual)
 	}

@@ -17,10 +17,11 @@ const (
 	Less     Type = "<"
 	Greater  Type = ">"
 
-	Int   Type = "int"
-	True  Type = "true"
-	False Type = "false"
-	Ident Type = "ident"
+	Int    Type = "int"
+	True   Type = "true"
+	False  Type = "false"
+	Ident  Type = "ident"
+	String Type = "string"
 
 	Let    Type = "let"
 	Return Type = "return"

@@ -62,6 +62,8 @@ func (l *Lexer) Next() token.Token {
 		return token.Token{Type: token.RBrace, Literal: string(l.ch)}
 	case ',':
 		return token.Token{Type: token.Comma, Literal: string(l.ch)}
+	case '"':
+		return token.Token{Type: token.String, Literal: l.readString()}
 	case 0:
 		return token.Token{Type: token.EOF, Literal: "EOF"}
 	}
@@ -118,9 +120,22 @@ func (l *Lexer) readLiteral() string {
 	for isLetter(l.nextChar()) {
 		l.next()
 	}
-	return l.src[pos : l.currPos+1] // exclusive of end
+	return l.src[pos : l.currPos+1] // exclusive end
 }
 
 func isLetter(ch byte) bool {
 	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
+}
+
+func (l *Lexer) readString() string {
+	l.next() // consume '"'
+
+	pos := l.currPos
+	for l.nextChar() != '"' {
+		l.next()
+	}
+	literal := l.src[pos : l.currPos+1]
+
+	l.next() // consume '"'
+	return literal
 }
